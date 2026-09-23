@@ -1,0 +1,7 @@
+campaign_name,filter_arpu_segment,filter_data_segment,filter_call_segment,filter_current_tariff,target_tariff,channel
+tariff_8_to_tariff_9_LOW_digital_ads,LOW,,,tariff_8,tariff_9,digital_ads
+tariff_14_to_tariff_9_MID_digital_ads,MID,,,tariff_14,tariff_9,digital_ads
+tariff_4_to_tariff_21_MID_sms,MID,,,tariff_4,tariff_21,sms
+tariff_13_to_tariff_10_LOW_digital_ads,LOW,,,tariff_13,tariff_10,digital_ads
+tariff_10_to_tariff_13_LOW_digital_ads,LOW,,,tariff_10,tariff_13,digital_ads
+tariff_11_to_tariff_21_LOW_sms,LOW,,,tariff_11,tariff_21,sms
