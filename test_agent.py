@@ -2,6 +2,7 @@
 import unittest
 from unittest.mock import patch
 import warnings
+import time
 import numpy as np
 import pandas as pd
 from agent import Agent
@@ -127,11 +128,18 @@ class AgentTests(unittest.TestCase):
         from make_submission import build_submission
         class CheckedAgent(Agent):
             def act(inner, env):
+                started = time.monotonic()
+                initial_budget, initial_contacts = env.remaining_budget, env.remaining_contacts
                 campaigns = super(CheckedAgent, inner).act(env)
+                self.assertLess(time.monotonic() - started, 600)
+                self.assertIsInstance(campaigns, list)
+                self.assertTrue(all(isinstance(c, dict) for c in campaigns))
                 self.assertTrue(1 <= len(campaigns) <= 10)
                 validate_strategy(pd.DataFrame(campaigns), env.tariffs)
                 self.assertTrue(0 < len(env.pilot_history) <= 20)
                 self.assertTrue(all(10 <= p['n_customers'] <= 200 for p in env.pilot_history))
+                self.assertLessEqual(initial_budget - env.remaining_budget, .15 * initial_budget)
+                self.assertLessEqual(initial_contacts - env.remaining_contacts, 2000)
                 return campaigns
         for seed in range(10):
             result = evaluate_agent(CheckedAgent(), seed=seed, verbose=False)
@@ -141,6 +149,35 @@ class AgentTests(unittest.TestCase):
         expected = build_submission(Agent()).fillna('')
         actual = pd.read_csv('submission.csv').fillna('')
         pd.testing.assert_frame_equal(expected, actual)
+
+    def test_positive_pilot_without_history_has_valid_fallback(self):
+        agent, env = Agent(), PublicEnv(effect=.01)
+        env.pilots_left = 4  # Isolate fallback after broad exploration.
+        empty_prior = historical_prior().iloc[:0]
+        with patch.object(agent, '_build_prior', return_value=empty_prior):
+            campaigns = agent.act(env)
+        self.assertTrue(env.pilot_history)
+        self.assertEqual(len(campaigns), 1)
+        self.assertEqual(campaigns[0]['channel'], 'push')
+        validate_strategy(pd.DataFrame(campaigns), env.tariffs)
+
+    def test_history_invalid_values_and_missing_file(self):
+        hist = pd.DataFrame({
+            'tariff_plan_code_from': ['a'] * 6, 'tariff_plan_code_to': ['b'] * 6,
+            'AVG_ARPU_PREV_3M': [None, 'bad', 0, float('inf'), 2000, 2000],
+            'AVG_ARPU_NEXT_3M': [100, 100, 100, 100, float('nan'), 2400]})
+        agent = Agent()
+        with patch('agent.pd.read_csv', return_value=hist):
+            prior = agent._build_prior()
+        self.assertEqual(prior['n'].tolist(), [1])
+        self.assertAlmostEqual(prior['ratio'].iloc[0], .2)
+        agent.cells = {('a', 'MID'): np.array([0., 2000.])}
+        for c in agent._rank_candidates(prior, {'a', 'b'}):
+            self.assertTrue(np.isfinite(agent._belief(c)).all())
+        with warnings.catch_warnings(record=True) as logged:
+            with patch('agent.pd.read_csv', side_effect=FileNotFoundError('missing history')):
+                self.assertTrue(agent._build_prior().empty)
+        self.assertTrue(logged)
 
 
 if __name__ == '__main__':

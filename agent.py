@@ -5,7 +5,9 @@ import warnings
 import numpy as np
 import pandas as pd
 
-PILOT_STD = 0.804  # Public measurement noise in environment.py, not a mock effect.
+# Public environment.py:52,172: noise ~ N(0, PER_CUSTOMER_STD / sqrt(n)).
+# This is measurement noise, not an inferred/tuned mock transition effect.
+PILOT_STD = 0.804
 MAX_CAMPAIGNS = 10
 MAX_CUSTOMERS_PER_CAMPAIGN = 5000
 
@@ -254,8 +256,11 @@ class Agent:
         if not self.channels:
             return []
         cheapest = min(self.channels, key=lambda ch: (self.channels[ch]['cost_per_contact'], ch))
+        # Positive pilot evidence can rescue a hypothesis with missing/negative
+        # history even when its lower-confidence score is not yet positive.
         options = [self._option(c, cheapest, env.remaining_budget, env.remaining_contacts)
-                   for c in candidates if c['hist_n'] > 0 and c['hist_mean'] > 0]
+                   for c in candidates if c['pilots'] > 0
+                   or (c['hist_n'] > 0 and c['hist_mean'] > 0)]
         options = [o for o in options if o and o['expected'] > 0]
         return [max(options, key=lambda o: o['value'])] if options else []
 
